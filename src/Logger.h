@@ -1,7 +1,14 @@
+/**
+ * @file Logger.h
+ * @brief Logging utility used by the simulation.
+ */
 #pragma once
 #include <fstream>
 #include <string>
-
+/**
+ * @file Logger.h
+ * @brief Logging utility used by the simulation.
+ */
 enum class LogKind 
 {
     LOG_INFO,
@@ -13,7 +20,10 @@ enum class LogKind
     FIREWALL_BLOCK,
     STATUS
 };
-
+/**
+ * @class Logger
+ * @brief Writes log messages to a file and optionally to console.
+ */
 class Logger 
 {
 public:

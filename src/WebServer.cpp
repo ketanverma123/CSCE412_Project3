@@ -1,3 +1,7 @@
+/**
+ * @file WebServer.cpp
+ * @brief Implements the WebServer simulation behavior.
+ */
 #include "WebServer.h"
 
 WebServer::WebServer()

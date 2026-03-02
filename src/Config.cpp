@@ -1,3 +1,7 @@
+/**
+ * @file Config.cpp
+ * @brief Implements configuration parsing utilities and ConfigLoader.
+ */
 #include "Config.h"
 #include <fstream>
 #include <sstream>

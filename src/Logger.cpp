@@ -1,3 +1,7 @@
+/**
+ * @file Logger.cpp
+ * @brief Implements file + console logging with optional ANSI coloring.
+ */
 #include "Logger.h"
 #include <iostream>
 

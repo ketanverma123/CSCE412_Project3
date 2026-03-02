@@ -1,3 +1,7 @@
+/**
+ * @file Firewall.cpp
+ * @brief Implements the Firewall prefix matching logic.
+ */
 #include "Firewall.h"
 
 Firewall::Firewall(const std::vector<BlockRule>& blockrules):blockrules_(blockrules) {}

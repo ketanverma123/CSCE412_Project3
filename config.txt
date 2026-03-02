@@ -1,0 +1,16 @@
+servers_start=10
+cycles=10000
+initial_fill_multiplier=100
+task_time_min=5
+task_time_max=40
+arrival_probability=0.30
+arrival_batch_min=1
+arrival_batch_max=2
+scale_lower_multiplier=50
+scale_upper_multiplier=80
+scale_rest_cycles=25
+blocked_ranges=192.168.10.,10.10.
+color_output=true
+log_sample_every=100
+log_dir=logs
+log_file=logs/run_log.txt

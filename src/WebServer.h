@@ -1,7 +1,17 @@
+/**
+ * @file WebServer.h
+ * @brief Simulated web server that processes requests over time.
+ */
 #pragma once
 #include <optional>
 #include "Request.h"
-
+/**
+ * @class WebServer
+ * @brief Represents a single server that can process one request at a time.
+ *
+ * A WebServer maintains an internal countdown . Each tick decrements
+ * the timer until the assigned request completes.
+ */
 class WebServer 
 {
 public:
