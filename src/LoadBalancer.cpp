@@ -343,3 +343,224 @@ bool LoadBalancer::tryRemoveOneServer()
 
     return true;
 }
+void LoadBalancer::maybeScaleServers()
+{
+    if (scale_wait_ > 0)
+    {
+        scale_wait_--;
+        return;
+    }
+
+    const int servers = activeServerCount();
+    const long long qsize = static_cast<long long>(request_queue_.size());
+
+    const long long lower = 1LL * config_.queue_lower_threshold * servers;
+    const long long upper = 1LL * config_.queue_upper_threshold * servers;
+
+    if (qsize > upper)
+    {
+        addOneServer();
+        scale_wait_ = config_.scale_cooldown_cycles;
+
+        std::ostringstream oss;
+        oss << "t=" << std::setw(5) << std::setfill('0') << cycle_
+            << " SCALE_UP to " << activeServerCount()
+            << " | queue=" << request_queue_.size()
+            << " (above " << config_.queue_upper_threshold << "*servers)";
+        logger_.log(LogKind::SERVER_SCALE_UP, oss.str(), true, config_.enable_color_output);
+        return;
+    }
+
+    if (qsize < lower)
+    {
+        bool removed = tryRemoveOneServer();
+        if (removed)
+        {
+            scale_wait_ = config_.scale_cooldown_cycles;
+
+            std::ostringstream oss;
+            oss << "t=" << std::setw(5) << std::setfill('0') << cycle_
+                << " SCALE_DOWN to " << activeServerCount()
+                << " | queue=" << request_queue_.size()
+                << " (below " << config_.queue_lower_threshold << "*servers)";
+            logger_.log(LogKind::SERVER_SCALE_DOWN, oss.str(), true, config_.enable_color_output);
+        }
+    }
+}
+
+void LoadBalancer::writeFinalSummary(int starting_queue)
+{
+    logger_.raw("========================", true);
+    logger_.raw("FINAL SUMMARY", true);
+    logger_.raw("========================", true);
+
+    {
+        std::ostringstream oss;
+        oss << "Starting queue size (required): " << starting_queue;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "Ending queue size (required): " << request_queue_.size();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "Task time range (required): " << config_.processing_time_min
+            << " to " << config_.processing_time_max << " cycles";
+        logger_.raw(oss.str(), true);
+    }
+
+    logger_.raw("", true);
+    logger_.raw("Total requests:", true);
+    {
+        std::ostringstream oss;
+        oss << "  Initial generated (queued): " << initial_generated_count_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  New generated during run:   " << runtime_generated_count_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Completed:                  " << completed_count_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Rejected (firewall):        " << firewall_rejected_count_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Remaining in queue:         " << request_queue_.size();
+        logger_.raw(oss.str(), true);
+    }
+
+    logger_.raw("", true);
+    logger_.raw("Server scaling:", true);
+    {
+        std::ostringstream oss;
+        oss << "  Active servers start: " << config_.initial_servers;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Active servers end:   " << activeServerCount();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Min active servers:   " << min_active_servers_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Max active servers:   " << max_active_servers_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Scale up events:      " << scale_up_count_;
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Scale down events:    " << scale_down_count_;
+        logger_.raw(oss.str(), true);
+    }
+
+    logger_.raw("", true);
+    logger_.raw("Queue behavior:", true);
+    {
+        double avg = (config_.simulation_cycles > 0)
+                         ? static_cast<double>(queue_size_sum_) / static_cast<double>(config_.simulation_cycles)
+                         : 0.0;
+
+        std::ostringstream oss;
+        oss << "  Peak queue size: " << peak_queue_size_;
+        logger_.raw(oss.str(), true);
+
+        std::ostringstream oss2;
+        oss2 << "  Avg queue size:  " << std::fixed << std::setprecision(2) << avg;
+        logger_.raw(oss2.str(), true);
+    }
+
+    logger_.raw("", true);
+    logger_.raw("End status (rubric):", true);
+    {
+        std::ostringstream oss;
+        oss << "  Active servers:   " << activeServerCount();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Busy servers:     " << busyServerCount();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Idle servers:     " << idleServerCount();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Remaining queue:  " << request_queue_.size();
+        logger_.raw(oss.str(), true);
+    }
+    {
+        std::ostringstream oss;
+        oss << "  Rejected requests: " << firewall_rejected_count_;
+        logger_.raw(oss.str(), true);
+    }
+
+    logger_.raw("========================", true);
+}
+
+void LoadBalancer::run()
+{
+    writeHeader();
+
+    const int initial_requests = config_.initial_servers * config_.initial_queue_multiplier;
+    seedInitialQueue(initial_requests);
+
+    const int starting_queue = static_cast<int>(request_queue_.size());
+
+    {
+        std::ostringstream oss;
+        oss << "Starting queue size (required): " << starting_queue
+            << " (seeded from servers * " << config_.initial_queue_multiplier << ")";
+        logger_.log(LogKind::LOG_INFO, oss.str(), true, config_.enable_color_output);
+    }
+
+    for (cycle_ = 1; cycle_ <= config_.simulation_cycles; cycle_++)
+    {
+        tickServers();
+        assignToIdleServers();
+        maybeGenerateArrivals();
+        maybeScaleServers();
+
+        long long qsz = static_cast<long long>(request_queue_.size());
+        queue_size_sum_ += qsz;
+        if (qsz > peak_queue_size_)
+        {
+            peak_queue_size_ = qsz;
+        }
+
+        if (config_.log_interval > 0 && (cycle_ % config_.log_interval == 0))
+        {
+            std::ostringstream oss;
+            oss << "t=" << std::setw(5) << std::setfill('0') << cycle_
+                << " queue=" << request_queue_.size()
+                << " servers=" << activeServerCount()
+                << " busy=" << busyServerCount()
+                << " completed=" << completed_count_
+                << " rejected=" << firewall_rejected_count_;
+            logger_.log(LogKind::STATUS, oss.str(), true, config_.enable_color_output);
+        }
+    }
+
+    writeFinalSummary(starting_queue);
+}
